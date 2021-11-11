@@ -2,8 +2,10 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using Photon.Pun;
+using Hashtable = ExitGames.Client.Photon.Hashtable;
+using Photon.Realtime;
 
-public class PlayerController : MonoBehaviour
+public class PlayerController : MonoBehaviourPunCallbacks, IDamageable
 {
     [SerializeField] GameObject cameraHolder;
 
@@ -28,7 +30,7 @@ public class PlayerController : MonoBehaviour
 
     void Start()
     {
-        if (PV.IsMine)
+        if (PV.IsMine) //El PV.IsMine es para interactuar con el personaje local.
         {
             EquipItem(0);
         }
@@ -45,6 +47,7 @@ public class PlayerController : MonoBehaviour
         Look();
         Move();
         Jump();
+
         for(int i=0; i < items.Length; i++)
         {
             if(Input.GetKeyDown((i + 1).ToString())) //Recorre los items que tenemos y si presionamos la tecla del lugar del item, equipamos ese item.
@@ -54,9 +57,14 @@ public class PlayerController : MonoBehaviour
             }
         }
 
+        if(Input.GetMouseButtonDown(0))
+        {
+            items[itemIndex].Use();
+        }
+
     }
 
-    void Look() //Encargado del movimiento de la camara con respecto al mouse
+    void Look() //Encargado del movimiento de la camara con respecto al mouse.
     {
         transform.Rotate(Vector3.up * Input.GetAxisRaw("Mouse X") * mouseSensitivity);
 
@@ -66,7 +74,7 @@ public class PlayerController : MonoBehaviour
         cameraHolder.transform.localEulerAngles = Vector3.left * verticalLookRotation;
     }
 
-    void Move()
+    void Move() //Funcion que se encarga de mover al jugador.
     {
         Vector3 moveDir = new Vector3(Input.GetAxisRaw("Horizontal"), 0, Input.GetAxisRaw("Vertical")).normalized;
 
@@ -83,13 +91,13 @@ public class PlayerController : MonoBehaviour
 
     public void setGroundedState(bool _grounded)
     {
-        grounded = _grounded;
+        grounded = _grounded; //Detecta si esta en el suelo o no.
     }
 
     void FixedUpdate()
     {
         if(!PV.IsMine) return;
-        rb.MovePosition(rb.position + transform.TransformDirection(moveAmount) * Time.fixedDeltaTime);
+        rb.MovePosition(rb.position + transform.TransformDirection(moveAmount) * Time.fixedDeltaTime); //Hacemos que el movimiento sea sincronizado.
     }
 
     void EquipItem(int _index)
@@ -106,7 +114,28 @@ public class PlayerController : MonoBehaviour
 
         previousItemIndex = itemIndex; //Guardamos el item anterior.
 
+        if(PV.IsMine) //Si es el local player.
+        {
+            Hashtable hash = new Hashtable();
+            hash.Add("itemIndex", itemIndex);       //Enviamos el indice del item por la red.
+            PhotonNetwork.LocalPlayer.SetCustomProperties(hash);
+        }
+
     }
 
+    //Esta función se usa para que el player no local pueda ver cuando el player local cambie el arma, es decir sincroniza el arma que esta usando con el servidor.
+    public override void OnPlayerPropertiesUpdate(Player targetPlayer, Hashtable changedProps) //Esta funcion se llama cuando la información llega
+    {
+        if (!PV.IsMine && targetPlayer == PV.Owner)
+        {
+            EquipItem((int)changedProps["itemIndex"]); //Si es un player distinto al local, le enviamos el indice del item y equipamos el item.
+        }
+    }
+
+
+    public void TakeDamage(float damage) //Agregar la inteface al principio del script nos permite llamar a la función TakeDamage
+    {
+        Debug.Log("Player took damage");
+    }
 
 }
